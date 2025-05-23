@@ -1,13 +1,13 @@
 package org.example.myblog.service;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.myblog.dto.request.UserRequest;
 import org.example.myblog.exception.BusinessException;
 import org.example.myblog.exception.errors.UserError;
-import org.example.myblog.model.User;
+import org.example.myblog.model.Users;
 import org.example.myblog.repository.UserRepository;
-import org.example.myblog.security.JwtUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -29,7 +30,6 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
-    private final JwtUtils jwtUtils;
 
     @Value("${pathMap.uploadDir}")
     private String uploadDir;
@@ -37,7 +37,7 @@ public class UserService {
     @Value("${pathMap.accessPath}")
     private String accessPath;
 
-
+    @Transactional
     public void register(String username, String password) {
         // 如果用户名使用非法字符, 用户名必须是字母或者数字或者下划线
         if (!username.matches("[a-zA-Z0-9_]{3,12}")) {
@@ -49,15 +49,15 @@ public class UserService {
             throw new BusinessException(UserError.DUPLICATE_USER);
         }
 
-        User newUser = User.builder()
+        Users newUsers = Users.builder()
                 .username(username)
                 .password(bCryptPasswordEncoder.encode(password))
                 .build();
-        userRepository.save(newUser);
+        userRepository.save(newUsers);
     }
 
     public Long login(String username, String password) {
-        User byUsername = userRepository.findByUsername(username);
+        Users byUsername = userRepository.findByUsername(username);
         // 如果用户不存在
         if (byUsername == null) {
             throw new BusinessException(UserError.INVALID_USER);
@@ -70,21 +70,33 @@ public class UserService {
         }
     }
 
+    @Transactional
     public void update(UserRequest updateUserRequest, Long userId) {
-        // TODO 处理非法用户名
-        userRepository.findById(userId).ifPresent(user -> {
-            if (updateUserRequest.username() != null) {
-                user.setUsername(updateUserRequest.username());
-            }
-            if (updateUserRequest.password() != null) {
-                user.setPassword(bCryptPasswordEncoder.encode(updateUserRequest.password()));
-            }
-            userRepository.save(user);
-        });
+        Users users = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(UserError.USER_NOT_FOUND));
 
+        // 修改密码
+        Optional.ofNullable(updateUserRequest.password())
+                .map(bCryptPasswordEncoder::encode)
+                .ifPresent(password -> {
+                    if (!password.isBlank()) {
+                        users.setPassword(password);
+                    }
+                });
+
+        // 修改用户名
+        Optional.ofNullable(updateUserRequest.username())
+                .ifPresent(username -> {
+                    if (username.isBlank()) return;
+
+                    // 如果更新用户的字符是非法字符的话
+                    if (!username.matches("[0-9a-zA-Z_]{3,12}"))
+                        throw new BusinessException(UserError.INVALID_USERNAME);
+                    users.setUsername(username);
+                });
     }
 
-
+    @Transactional
     public String upload(MultipartFile avatar, Long userId) throws IOException {
         // 如果文件是空文件, 就抛出异常
         if (avatar == null || avatar.isEmpty()) {
@@ -132,6 +144,8 @@ public class UserService {
         return path;
     }
 
+    // 异步删除, 如果删除失败也不会影响主线程.
+    @Transactional
     @Async
     public void deleteOldFiles(String path) throws IOException {
         String oldFileName = UriComponentsBuilder.fromUriString(path).build().getPathSegments().getLast();
@@ -144,4 +158,6 @@ public class UserService {
             throw new RuntimeException(e.getMessage());
         }
     }
+
+
 }

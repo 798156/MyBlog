@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.proxy.HibernateProxy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -15,27 +16,41 @@ import java.util.Objects;
 @AllArgsConstructor
 @Entity
 @Builder
-@Table(name = "[user]")
-public class User {
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "user")
+//@Table(name = "[user]")
+public class Users {
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
     @ToString.Exclude
-    private List<Article> articles;
+    private List<Article> articles = new ArrayList<>();
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
+    @ToString.Exclude
+    private List<Comment> comments = new ArrayList<>();
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String username;
     private String password;
     private String avatarUrl;
-    
 
     public void addArticle(Article article) {
         articles.add(article);
-        article.setUser(this);
+        article.setUsers(this);
     }
 
     public void removeArticle(Article article) {
         articles.remove(article);
-        article.setUser(null);
+        article.setUsers(null);
+    }
+
+    public void addComment(Comment comment) {
+        comments.add(comment);
+        comment.setUsers(this);
+    }
+
+    public void removeComment(Comment comment) {
+        comments.remove(comment);
+        comment.setUsers(null);
     }
 
     @Override
@@ -45,8 +60,8 @@ public class User {
         Class<?> oEffectiveClass = o instanceof HibernateProxy ? ((HibernateProxy) o).getHibernateLazyInitializer().getPersistentClass() : o.getClass();
         Class<?> thisEffectiveClass = this instanceof HibernateProxy ? ((HibernateProxy) this).getHibernateLazyInitializer().getPersistentClass() : this.getClass();
         if (thisEffectiveClass != oEffectiveClass) return false;
-        User user = (User) o;
-        return getId() != null && Objects.equals(getId(), user.getId());
+        Users users = (Users) o;
+        return getId() != null && Objects.equals(getId(), users.getId());
     }
 
     @Override
